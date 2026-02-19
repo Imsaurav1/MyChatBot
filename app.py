@@ -1,78 +1,48 @@
 import os
-import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-
-# ================== APP SETUP ==================
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Client auto-reads GEMINI_API_KEY from environment
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "your_actual_key_here")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-GEMINI_BASE = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-1.5-flash:generateContent"
-)
-
-# ================== SYSTEM INSTRUCTION ==================
-
-SYSTEM_INSTRUCTION = """
-You are a helpful, friendly, and knowledgeable AI assistant.
-Be concise but thorough. Format responses with markdown when helpful.
-
+SYSTEM_INSTRUCTION = (
+    "You are a helpful, friendly, and knowledgeable AI assistant. "
+    "Be concise but thorough. Format responses with markdown when helpful."
+    """
 You are a helpful assistant for [YOUR WEBSITE NAME].
 You help visitors navigate the site and answer questions about it.
 
 ABOUT THIS WEBSITE:
-- Purpose: A portfolio website
-- URL: https://yourwebsite.com
+- Purpose: [e.g. "A portfolio site for a freelance web developer named Saurabh Jha"]
+- URL: https://saurabhjha.live
 
-PAGES:
-1. Home (/)
-2. About (/about)
-3. Projects (/projects)
-4. Services (/services)
-5. Contact (/contact)
+PAGES ON THIS WEBSITE:
+1. Home (/) — [describe what's on the homepage]
+2. About (/about) — [describe the about page]
+3. Projects (/projects) — [list your projects]
+4. Services (/services) — [what services you offer]
+5. Contact (/contact) — [contact info, form, etc.]
 
 IMPORTANT RULES:
-- Only answer questions related to this website or general help.
-- If asked something unrelated, politely redirect to website topics.
-- Always be friendly and concise.
-- If unsure, suggest contacting via the contact page.
+- Only answer questions related to this website or general help
+- If asked something unrelated, politely redirect to the site's topics
+- Always be friendly, concise, and helpful
+- If you don't know something specific, say so and suggest contacting via the contact page
 """
+)
 
-# ================== SESSION STORAGE ==================
-
-# WARNING: In production, use Redis or DB instead of dictionary
+# Store conversation history per session
+# { session_id: [ types.Content(...), ... ] }
 chat_sessions = {}
 
-# ================== HELPER FUNCTION ==================
-
-def build_payload(history: list, user_message: str) -> dict:
-    contents = []
-
-    # Inject system instruction at first conversation
-    if not history:
-        contents.append({
-            "role": "user",
-            "parts": [{"text": SYSTEM_INSTRUCTION}]
-        })
-        contents.append({
-            "role": "model",
-            "parts": [{"text": "Understood! I'm ready to help."}]
-        })
-
-    contents.extend(history)
-
-    contents.append({
-        "role": "user",
-        "parts": [{"text": user_message}]
-    })
-
-    return {"contents": contents}
-
-# ================== ROUTES ==================
 
 @app.route("/")
 def index():
@@ -81,76 +51,60 @@ def index():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    if not GEMINI_API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY not set on server."}), 500
-
     data = request.json
-    if not data:
-        return jsonify({"error": "Invalid request body"}), 400
-
     user_message = data.get("message", "").strip()
     session_id = data.get("session_id", "default")
 
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
 
+    # Get or init history for this session
     history = chat_sessions.setdefault(session_id, [])
 
     try:
-        payload = build_payload(history, user_message)
+        # Add the new user message to history
+        history.append(
+            types.Content(role="user", parts=[types.Part(text=user_message)])
+        )
 
-        url = f"{GEMINI_BASE}?key={GEMINI_API_KEY}"
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=history,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                max_output_tokens=2048,
+                temperature=0.7,
+            ),
+        )
 
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
+        bot_reply = response.text
 
-        result = response.json()
+        # Save model reply to history
+        history.append(
+            types.Content(role="model", parts=[types.Part(text=bot_reply)])
+        )
 
-        bot_reply = result["candidates"][0]["content"]["parts"][0]["text"]
-
-        # Save conversation history
-        history.append({
-            "role": "user",
-            "parts": [{"text": user_message}]
-        })
-
-        history.append({
-            "role": "model",
-            "parts": [{"text": bot_reply}]
-        })
-
-        return jsonify({
-            "reply": bot_reply,
-            "session_id": session_id
-        })
-
-    except requests.exceptions.HTTPError as e:
-        err_body = e.response.text if e.response else str(e)
-        return jsonify({"error": f"Gemini API error: {err_body}"}), 502
+        return jsonify({"reply": bot_reply, "session_id": session_id})
 
     except Exception as e:
+        # Remove the user message we just added if request failed
+        if history:
+            history.pop()
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/reset", methods=["POST"])
 def reset():
-    data = request.json or {}
+    data = request.json
     session_id = data.get("session_id", "default")
-
     chat_sessions.pop(session_id, None)
-
-    return jsonify({
-        "status": "reset",
-        "session_id": session_id
-    })
+    return jsonify({"status": "reset", "session_id": session_id})
 
 
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
 
-
-# ================== MAIN ==================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
