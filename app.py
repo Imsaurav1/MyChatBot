@@ -16,27 +16,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 SYSTEM_INSTRUCTION = (
     "You are a helpful, friendly, and knowledgeable AI assistant. "
     "Be concise but thorough. Format responses with markdown when helpful."
-    """
-You are a helpful assistant for [YOUR WEBSITE NAME].
-You help visitors navigate the site and answer questions about it.
-
-ABOUT THIS WEBSITE:
-- Purpose: [e.g. "A portfolio site for a freelance web developer named Saurabh Jha"]
-- URL: https://saurabhjha.live
-
-PAGES ON THIS WEBSITE:
-1. Home (/) — [describe what's on the homepage]
-2. About (/about) — [describe the about page]
-3. Projects (/projects) — [list your projects]
-4. Services (/services) — [what services you offer]
-5. Contact (/contact) — [contact info, form, etc.]
-
-IMPORTANT RULES:
-- Only answer questions related to this website or general help
-- If asked something unrelated, politely redirect to the site's topics
-- Always be friendly, concise, and helpful
-- If you don't know something specific, say so and suggest contacting via the contact page
-"""
+    
 )
 
 # Store conversation history per session
