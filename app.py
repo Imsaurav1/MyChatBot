@@ -17,7 +17,7 @@ GROQ_API_KEY       = os.environ.get("GROQ_API_KEY",       "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # ── Site content catalog (for local suggestion matching, NOT sent to any AI) ─
-CATALOG_URL         = os.environ.get("CATALOG_URL", "https://shivmarg.live/abc.json")
+CATALOG_URL         =  '/abc.json'
 CATALOG_TTL_SECONDS = int(os.environ.get("CATALOG_TTL_SECONDS", "1800"))  # 30 min
 MAX_SUGGESTIONS     = int(os.environ.get("MAX_SUGGESTIONS", "5"))
 
